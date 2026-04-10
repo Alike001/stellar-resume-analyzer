@@ -7,6 +7,7 @@ function App() {
   const [step, setStep] = useState("input");
   const [cvText, setCvText] = useState("");
   const [paymentInfo, setPaymentInfo] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState("");
   const [loadingMessage, setLoadingMessage] = useState("");
   const [copied, setCopied] = useState("");
@@ -46,6 +47,62 @@ function App() {
       setError("Could not reach the backend. Is it running on port 3001?");
       setStep("input");
     }
+  }
+
+  async function handleVerifyAndAnalyze() {
+    setError("");
+
+    try {
+      setLoadingMessage("Checking the Stellar blockchain...");
+      setStep("loading");
+
+      const verifyResponse = await fetch(`${BACKEND}/payment/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memo: paymentInfo.memo }),
+      });
+
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyData.verified) {
+        setError(
+          "Payment not found yet. Please wait 10-30 seconds after sending and try again."
+        );
+        setStep("payment");
+        return;
+      }
+
+      setLoadingMessage("Payment confirmed! Analyzing your CV...");
+
+      const analyzeResponse = await fetch(`${BACKEND}/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cvText: cvText,
+          memo: paymentInfo.memo,
+        }),
+      });
+
+      const analyzeData = await analyzeResponse.json();
+
+      if (!analyzeData.success) {
+        throw new Error(analyzeData.error || "Analysis failed");
+      }
+
+      setAnalysis(analyzeData.analysis);
+      setStep("results");
+    } catch (err) {
+      setError(err.message || "Something went wrong. Please try again.");
+      setStep("payment");
+    }
+  }
+
+  function handleReset() {
+    setStep("input");
+    setCvText("");
+    setPaymentInfo(null);
+    setAnalysis(null);
+    setError("");
   }
 
   return (
@@ -156,10 +213,58 @@ function App() {
             </div>
           </div>
 
-          <button>I have Paid — Verify & Analyze</button>
+          <button onClick={handleVerifyAndAnalyze}>I have Paid — Verify & Analyze</button>
 
           <button className="btn-secondary" onClick={() => setStep("input")}>
             ← Go Back
+          </button>
+        </div>
+      )}
+
+      {step === "results" && analysis && (
+        <div className="results">
+          <h2>Your CV Analysis</h2>
+          <p style={{ color: "#4caf50", marginBottom: "16px", fontSize: "14px" }}>
+            ✅ Payment verified on Stellar testnet
+          </p>
+
+          <div className="score">
+            {analysis.score}
+            <span style={{ fontSize: "20px" }}>/100</span>
+          </div>
+          <p className="score-label">Overall CV Score</p>
+
+          <div className="summary">{analysis.summary}</div>
+
+          <div className="result-section">
+            <h3>Strengths</h3>
+            <ul>
+              {analysis.strengths.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="result-section">
+            <h3>Areas to Improve</h3>
+            <ul>
+              {analysis.improvements.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="result-section">
+            <h3>Suggested Keywords</h3>
+            <div className="keywords">
+              {analysis.keywords.map((kw, i) => (
+                <span key={i} className="keyword-tag">{kw}</span>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={handleReset} style={{ marginTop: "24px" }}>
+            Analyze Another CV →
           </button>
         </div>
       )}
